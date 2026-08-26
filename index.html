@@ -75,7 +75,7 @@ h3{margin:0;font-size:17px}
 <body>
 <div id="app" class="app">
   <div class="top">
-    <div><div class="brand">NEUROCORE+</div><div class="sub">Circuito quirúrgico · v2.2</div></div>
+    <div><div class="brand">NEUROCORE+</div><div class="sub">Circuito quirúrgico · v2.6</div></div>
     <button id="plus" class="pri">+ Indicar</button>
   </div>
   <main id="view"></main>
@@ -120,6 +120,48 @@ const E=s=>String(s??"").replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 const ID=p=>p+Date.now().toString(36).toUpperCase();
 const D=x=>x?new Date(x+"T12:00:00").toLocaleDateString("es-AR"):"—";
 const M=x=>new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0}).format(Number(x)||0);
+
+function postopProtocolFor(c){
+  const p=c?.proc||"", r=c?.region||P[p]?.r||"";
+  const spineMajor=[
+    "Microdiscectomía lumbar","Laminectomía lumbar","Artrodesis lumbar instrumentada",
+    "Discectomía cervical anterior + artrodesis","Descompresión cervical posterior",
+    "Artrodesis cervical posterior","Tumor espinal"
+  ];
+  const brainMajor=[
+    "Craneotomía para tumor cerebral","Cirugía de fosa posterior",
+    "Hematoma intracraneano","Hematoma subdural"
+  ];
+  if(spineMajor.includes(p)) return "Columna";
+  if(brainMajor.includes(p)) return "Cerebral";
+  return "Manual";
+}
+function postopTemplate(type){
+  const base=[
+    "Diclofenac: 1 ampolla cada 8 horas.",
+    "Solución fisiológica: 1500 cc a pasar en 24 horas.",
+    "Ranitidina: 1 ampolla cada 12 horas.",
+    "Cefa: 1 cada 12 horas.",
+    "Tramadol: 1 ampolla SOS, a criterio si dolor mayor de 7/10.",
+    "Dieta según corresponda.",
+    "Curación de herida estéril si mancha.",
+    "Registrar débito de drenaje. Solo vaciar si se llena y avisar al servicio."
+  ];
+  if(type==="Cerebral"){
+    base.push(
+      "Fenitoína: 1 ampolla cada 8 horas.",
+      "Dexametasona: 4 mg cada 8 horas.",
+      "Cabecera a 40 grados."
+    );
+  }
+  return type==="Manual" ? "" : base.join("\\n");
+}
+function postopText(c){
+  if((c.postopMeds||"").trim()) return c.postopMeds.trim();
+  const protocol=c.postopProtocol||postopProtocolFor(c);
+  return postopTemplate(protocol);
+}
+
 
 function markDirty(){localStorage.setItem("nc_dirty","1");localStorage.setItem("nc_last_change",new Date().toISOString())}
 function dirty(){return localStorage.getItem("nc_dirty")==="1"}
@@ -189,6 +231,7 @@ function form(){
   <div class="field"><label>Unidades</label><input type="number" name="units"></div>
   <div class="field"><label>Valor unidad</label><input type="number" name="uv"></div>
   <div class="field"><label>Honorarios</label><input type="number" name="fees"></div>
+  <div class="field span2"><label>Pedidos ortopédicos / insumos quirúrgicos</label><textarea name="ortho" placeholder="Ej.: caja de microdiscectomía, separador tubular, hemostático, implante, drenaje, etc."></textarea></div>
   <button class="pri span2">CREAR CIRUGÍA</button></form>`;
 }
 function cases(){return `<h2>Casos quirúrgicos</h2>${list(S())}`}
@@ -231,12 +274,42 @@ function casedetail(){
   </div>
   <h2>Documentos</h2>
   <div class="docs">
-    ${[["hc","Resumen de historia clínica"],["ind","Indicación quirúrgica"],["auth","Solicitud de autorización"],["pre","Checklist prequirúrgico"],["foja","Foja quirúrgica base"],["d0","Evolución D0"],["d1","Evolución D1"],["alta","Epicrisis / alta"],["hon","Honorarios"]].map(d=>`<button data-doc="${d[0]}">${d[1]}</button>`).join("")}
+    ${[["hc","Resumen de historia clínica"],["ind","Indicación quirúrgica"],["auth","Solicitud de autorización"],["ortho","Pedido de insumos quirúrgicos"],["pre","Checklist prequirúrgico"],["foja","Foja quirúrgica"],["d0","Evolución D0"],["d1","Evolución D1"],["postop","Medicación / indicaciones postquirúrgicas"],["alta","Epicrisis / alta"],["hon","Honorarios"]].map(d=>`<button data-doc="${d[0]}">${d[1]}</button>`).join("")}
     <button id="notesCase">Compartir resumen del caso a Notas</button>
   </div>
   <h2>Checklist</h2>
   <div class="card checks">${ts.map(t=>`<label class="check"><input type="checkbox" data-task="${c.id}|${t.k}" ${c.done?.[t.k]?"checked":""}><span>${E(t.t)}</span></label>`).join("")||"Sin tareas activas."}</div>
   <h2>Postoperatorio específico</h2><div class="card"><ul>${po.map(x=>`<li>${E(x)}</li>`).join("")}</ul></div>
+  <h2>Pedidos ortopédicos</h2>
+  <div class="card form">
+    <div class="field"><label>Insumos quirúrgicos solicitados</label><textarea id="orthoEdit" placeholder="Un insumo por línea">${E(c.ortho||"")}</textarea></div>
+    <button id="saveortho">Guardar pedido ortopédico</button>
+  </div>
+  <h2>Medicación postquirúrgica</h2>
+  <div class="card form">
+    <div class="field"><label>Protocolo</label>
+      <select id="postopProtocol">
+        ${["Columna","Cerebral","Manual"].map(x=>`<option ${x===(c.postopProtocol||postopProtocolFor(c))?"selected":""}>${x}</option>`).join("")}
+      </select>
+    </div>
+    <div class="field"><label>Indicaciones</label>
+      <textarea id="postopMedsCase" style="min-height:230px">${E(postopText(c))}</textarea>
+    </div>
+    <div class="muted">Plantilla editable. Verificar alergias, contraindicaciones, función renal/hepática, interacciones y condición clínica antes de indicar.</div>
+    <button id="loadPostop">Recargar protocolo seleccionado</button>
+    <button id="savePostop" class="ok">Guardar medicación postquirúrgica</button>
+  </div>
+
+  <h2>Epicrisis / alta</h2>
+  <div class="card form">
+    <div class="field"><label>Fecha de alta</label><input id="dischargeDate" type="date" value="${E(c.dischargeDate||"")}"></div>
+    <div class="field"><label>Detalles de internación</label><textarea id="stayDetails" placeholder="Evolución durante la internación, estudios, incidencias y respuesta clínica">${E(c.stayDetails||"")}</textarea></div>
+    <div class="field"><label>Estado clínico al alta</label><textarea id="dischargeStatus" placeholder="Estado general y neurológico al momento del alta">${E(c.dischargeStatus||"")}</textarea></div>
+    <div class="field"><label>Medicación postquirúrgica</label><textarea id="postopMeds" placeholder="Una medicación por línea, con dosis y frecuencia">${E(postopText(c))}</textarea></div>
+    <div class="field"><label>Indicaciones particulares</label><textarea id="dischargeInstructions" placeholder="Actividad, restricciones u otras indicaciones específicas">${E(c.dischargeInstructions||"")}</textarea></div>
+    <div class="field"><label>Control postoperatorio (días)</label><input id="controlDays" type="number" min="1" value="${E(c.controlDays||15)}"></div>
+    <button id="savealta" class="ok">Guardar datos de alta</button>
+  </div>
   <h2>Finanzas</h2>
   <div class="card form">
     <div class="field"><label>Estado</label><select id="fin">${FS.map(s=>`<option ${s===c.fin?"selected":""}>${s}</option>`).join("")}</select></div>
@@ -245,15 +318,164 @@ function casedetail(){
   </div>`;
 }
 
+
+function clinicalSummary(c){
+  const level=[c.level,c.side&&c.side!=="No aplica"?c.side:""].filter(Boolean).join(" ");
+  const entered=(c.summary||"").trim();
+  const base=`Paciente evaluado por ${c.dx}${level?`, con compromiso correspondiente a ${level}`:""}.`;
+  const detail=entered?` ${entered.replace(/\s+/g," ").trim()}`:"";
+  const plan=` Conforme a la evaluación clínica consignada y a los estudios complementarios disponibles, se establece indicación de ${c.proc}${level?` ${level}`:""}. Se deja constancia de la verificación preoperatoria de procedimiento, nivel y lateralidad cuando corresponda. La conducta definitiva podrá adecuarse a los hallazgos intraoperatorios.`;
+  return base+detail+plan;
+}
+function fojaSteps(c){
+  const p=c.proc||"", lvl=c.level||"", side=(c.side&&c.side!=="No aplica")?` ${c.side}`:"";
+  if(p==="Microdiscectomía lumbar") return [
+    "Verificación de identidad, procedimiento, nivel y lateralidad; realización de pausa de seguridad quirúrgica.",
+    "Posicionamiento para abordaje lumbar y preparación habitual del campo quirúrgico.",
+    `Localización y confirmación del nivel ${lvl||"indicado"} mediante referencia anatómica y/o control por imágenes según disponibilidad.`,
+    `Abordaje posterior ${side.trim()||"del lado indicado"} y exposición limitada del espacio interlaminar correspondiente.`,
+    "Descompresión microquirúrgica del receso lateral/raíz comprometida y acceso al espacio discal según hallazgos.",
+    "Extracción del material discal que corresponda, preservando estructuras neurales y evitando maniobras innecesarias.",
+    "Control de hemostasia y revisión del campo quirúrgico.",
+    "Colocación de drenaje si fue indicado y efectivamente utilizado, dejando consignado tipo y ubicación.",
+    "Cierre por planos y curación estéril.",
+    "Registrar hallazgos, material extraído, incidentes/complicaciones, drenaje y destino postoperatorio reales antes de firmar."
+  ];
+  if(p.includes("Artrodesis lumbar")) return [
+    "Verificación de identidad, procedimiento, niveles e implantes; pausa de seguridad quirúrgica.",
+    "Posicionamiento y preparación del campo.",
+    "Confirmación de niveles mediante referencia anatómica y/o imágenes.",
+    "Abordaje posterior y exposición de los niveles planificados.",
+    "Descompresión neural según indicación y hallazgos.",
+    "Preparación e instrumentación pedicular/intervertebral según técnica seleccionada y material autorizado.",
+    "Control de posición del implante según método disponible.",
+    "Hemostasia; colocación de drenaje si fue indicado y efectivamente utilizado.",
+    "Cierre por planos y curación.",
+    "Consignar implantes, lotes si corresponde, hallazgos, incidentes/complicaciones y destino postoperatorio antes de firmar."
+  ];
+  if(p.includes("cervical") || p.includes("Cervical")) return [
+    "Verificación de identidad, procedimiento, niveles y lateralidad cuando corresponda; pausa de seguridad.",
+    "Posicionamiento y preparación del campo quirúrgico.",
+    "Confirmación de nivel mediante referencia anatómica y/o imágenes.",
+    "Abordaje cervical planificado y exposición del nivel.",
+    "Descompresión neural y/o tratamiento discal/óseo según indicación y hallazgos.",
+    "Colocación de implantes si corresponde, con control de posición según disponibilidad.",
+    "Hemostasia; colocación de drenaje si fue indicado y efectivamente utilizado.",
+    "Cierre por planos y curación.",
+    "Registrar hallazgos, implantes, incidentes/complicaciones, drenaje y destino postoperatorio reales antes de firmar."
+  ];
+  if(p==="Drenaje ventricular externo") return [
+    "Verificación de identidad, indicación, lateralidad y pausa de seguridad.",
+    "Posicionamiento, antisepsia y preparación del campo.",
+    "Identificación del punto de entrada planificado.",
+    "Trepanación y apertura dural según técnica habitual.",
+    "Cateterización ventricular hasta obtención de LCR y conexión al sistema de drenaje.",
+    "Fijación segura del catéter y conexión a sistema cerrado.",
+    "Nivelación inicial del sistema según indicación médica.",
+    "Hemostasia, cierre y curación.",
+    "Registrar características iniciales del LCR, funcionamiento del drenaje, incidencias y destino postoperatorio antes de firmar."
+  ];
+  return [
+    "Verificación de identidad, procedimiento, sitio/nivel y lateralidad cuando corresponda; pausa de seguridad quirúrgica.",
+    "Posicionamiento y preparación habitual del campo.",
+    "Confirmación anatómica del sitio quirúrgico.",
+    `Realización del procedimiento indicado: ${p}${lvl?` ${lvl}`:""}${side}.`,
+    "Control de hemostasia y revisión final del campo.",
+    "Colocación de drenaje si fue indicado y efectivamente utilizado, consignando tipo y ubicación.",
+    "Cierre por planos y curación.",
+    "Registrar hallazgos, material/implantes, incidentes o complicaciones y destino postoperatorio reales antes de firmar."
+  ];
+}
+function suppliesText(c){
+  const raw=(c.ortho||"").trim();
+  const items=raw?raw.split(/\n|;|,/).map(x=>x.trim()).filter(Boolean):[];
+  const itemsHtml=items.length?`<ol>${items.map(x=>`<li>${E(x)}</li>`).join("")}</ol>`:"<p>No se consignaron insumos en el formulario del caso.</p>";
+  return `<p>Se solicita la provisión y disponibilidad en quirófano de los siguientes insumos para el procedimiento programado <b>${E(c.proc)} ${E(c.level||"")} ${E(c.side&&c.side!=="No aplica"?c.side:"")}</b>:</p>${itemsHtml}<p>Los elementos solicitados deberán encontrarse disponibles y en condiciones de uso al momento del acto quirúrgico. Cualquier sustitución deberá ser comunicada y validada por el equipo tratante antes del procedimiento.</p>${secDoc("Diagnóstico",`<p>${E(c.dx)}</p>`)}`;
+}
+function secDoc(t,b){return `<h2>${t}</h2>${b}`}
+
 function doc(c,k){
-  const sec=(t,b)=>`<h2>${t}</h2>${b}`,base=`<small>NeuroCore+ · ${E(c.ep)}</small><h1>${E(c.name)}</h1><p><b>DNI:</b> ${E(c.dni||"—")} · <b>Cobertura:</b> ${E(c.ins||"—")} · <b>Afiliado:</b> ${E(c.aff||"—")}</p><p><b>Diagnóstico:</b> ${E(c.dx)}</p><p><b>Procedimiento:</b> ${E(c.proc)} ${E(c.level||"")} ${E(c.side||"")}</p>`;
-  if(k==="hc")return base+sec("Resumen clínico",`<p>${E(c.summary||"Sin resumen cargado.")}</p>`)+sec("Conducta",`<p>Se indica ${E(c.proc)} ${E(c.level||"")} ${E(c.side||"")}.</p>`);
-  if(k==="ind")return base+sec("Indicación quirúrgica",`<p>Se indica ${E(c.proc)} por ${E(c.dx)}. Prioridad: ${E(c.urg)}.</p>`);
-  if(k==="auth")return base+sec("Solicitud",`<p>Se solicita autorización para ${E(c.proc)} ${E(c.level||"")}.</p><p>Módulo: ${E(c.module||"—")} · Unidades: ${E(c.units||"—")}</p>`);
-  if(k==="pre")return base+sec("Checklist prequirúrgico",`<ul>${(P[c.proc]?.q||[]).map(x=>`<li>☐ ${E(x)}</li>`).join("")}</ul>`);
-  if(k==="foja")return base+sec("Foja quirúrgica base",`<p>Institución: ${E(c.inst||"—")} · Fecha: ${D(c.date)}</p><p>Completar con técnica efectivamente realizada, hallazgos, implantes, hemostasia, cierre, complicaciones y destino postoperatorio.</p>`);
-  if(k==="d0"||k==="d1")return base+sec(`Evolución ${k.toUpperCase()}`,`<p>Estado clínico: _______________________________________</p><p>Neurológico: __________________________________________</p><ul>${(P[c.proc]?.po||[]).map(x=>`<li>☐ ${E(x)}</li>`).join("")}</ul><p>Conducta: _____________________________________________</p>`);
-  if(k==="alta")return base+sec("Epicrisis / alta",`<p>Resumen de internación: __________________________________________</p><p>Medicación: __________________________</p><p>Cuidados / actividad: __________________</p><p>Signos de alarma: _____________________</p><p>Control: ______________________________</p>`);
+  const sec=(t,b)=>`<h2>${t}</h2>${b}`;
+  const side=(c.side&&c.side!=="No aplica")?c.side:"";
+  const procLine=[c.proc,c.level,side].filter(Boolean).join(" ");
+  const base=`<small>NeuroCore+ · ${E(c.ep)}</small><h1>${E(c.name)}</h1><p><b>DNI:</b> ${E(c.dni||"—")} · <b>Cobertura:</b> ${E(c.ins||"—")} · <b>Afiliado:</b> ${E(c.aff||"—")}</p><p><b>Diagnóstico:</b> ${E(c.dx)}</p><p><b>Procedimiento:</b> ${E(procLine)}</p>`;
+
+  if(k==="hc")
+    return base+
+      sec("Resumen clínico",`<p>${E(clinicalSummary(c))}</p>`)+
+      sec("Conducta",`<p>Se indica ${E(procLine)}. Programación sujeta a evaluación preoperatoria, condiciones clínicas, autorizaciones correspondientes y verificación definitiva de nivel y lateralidad cuando aplique.</p>`);
+
+  if(k==="ind")
+    return base+
+      sec("Indicación quirúrgica",`<p>Se indica ${E(procLine)} en relación con el diagnóstico consignado. Prioridad: ${E(c.urg)}. La indicación queda sujeta a evaluación preoperatoria y confirmación del sitio quirúrgico.</p>`);
+
+  if(k==="auth")
+    return base+
+      sec("Solicitud",`<p>Se solicita autorización para ${E(procLine)}.</p><p>Módulo: ${E(c.module||"—")} · Unidades: ${E(c.units||"—")}</p>`)+
+      sec("Diagnóstico",`<p>${E(c.dx)}</p>`);
+
+  if(k==="ortho")
+    return base+sec("Pedido de insumos quirúrgicos",suppliesText(c));
+
+  if(k==="pre")
+    return base+sec("Checklist prequirúrgico",`<ul>${(P[c.proc]?.q||[]).map(x=>`<li>☐ ${E(x)}</li>`).join("")}</ul>`);
+
+  if(k==="foja")
+    return base+
+      sec("Foja quirúrgica — borrador para validación",`<ol>${fojaSteps(c).map(x=>`<li>${E(x)}</li>`).join("")}</ol>`)+
+      `<p><b>Constancia médico-legal:</b> este borrador debe revisarse y adecuarse a lo efectivamente realizado, hallazgos, implantes, drenajes, incidencias/complicaciones y destino postoperatorio antes de su firma e incorporación a la historia clínica.</p>`;
+
+  if(k==="d0"||k==="d1")
+    return base+sec(`Evolución ${k.toUpperCase()}`,`
+      <p>Estado clínico: _______________________________________</p>
+      <p>Neurológico: __________________________________________</p>
+      <p>Dolor: ________________________________________________</p>
+      <p>Herida: _______________________________________________</p>
+      <p><b>Drenaje:</b> tipo/ubicación ____________________ · débito __________ · características ____________________</p>
+      <ul>${(P[c.proc]?.po||[]).map(x=>`<li>☐ ${E(x)}</li>`).join("")}</ul>
+      <p>Conducta: _____________________________________________</p>`);
+
+  if(k==="postop"){
+    const txt=postopText(c);
+    const lines=txt?txt.split(/\n+/).map(x=>x.trim()).filter(Boolean):[];
+    return base+
+      sec("Medicación e indicaciones postquirúrgicas",`
+        <ol>${lines.map(x=>`<li>${E(x)}</li>`).join("")}</ol>
+        <p><b>Diagnóstico:</b> ${E(c.dx||"—")}</p>
+        <p><small>Esquema sujeto a validación médica individual según alergias, contraindicaciones, función renal/hepática, interacciones, riesgo hemorrágico y condición clínica.</small></p>
+      `);
+  }
+  if(k==="alta"){
+    const stay=(c.stayDetails||"").trim();
+    const status=(c.dischargeStatus||"").trim();
+    const meds=postopText(c);
+    const extra=(c.dischargeInstructions||"").trim();
+    const days=Number(c.controlDays)||15;
+    const medLines=meds?meds.split(/\n+/).map(x=>x.trim()).filter(Boolean):[];
+    const medsHtml=medLines.length?`<ul>${medLines.map(x=>`<li>${E(x)}</li>`).join("")}</ul>`:`<p>No consignada.</p>`;
+    return base+
+      sec("Epicrisis / alta",`
+        <p><b>Institución:</b> ${E(c.inst||"—")} · <b>Fecha de cirugía:</b> ${D(c.date)} · <b>Fecha de alta:</b> ${D(c.dischargeDate)}</p>
+        <p>Paciente internado para tratamiento neuroquirúrgico por el diagnóstico consignado, realizándose ${E(procLine)}.</p>
+        <p><b>Detalles de internación:</b> ${E(stay||"No consignados.")}</p>
+        <p><b>Estado clínico al alta:</b> ${E(status||"No consignado.")}</p>
+      `)+
+      sec("Medicación postquirúrgica",medsHtml)+
+      sec("Indicaciones al alta",`
+        <p>${E(extra||"Cumplir las indicaciones específicas entregadas por el equipo tratante y evitar esfuerzos o actividades no autorizadas hasta nuevo control.")}</p>
+      `)+
+      sec("Cuidado de la herida en domicilio",`
+        <ul>
+          <li>Mantener la herida limpia y seca y realizar únicamente las curaciones indicadas al alta.</li>
+          <li>No manipular puntos, grapas, adhesivos ni costras. No aplicar cremas, talcos, alcohol, agua oxigenada u otros productos salvo indicación médica.</li>
+          <li>Evitar sumergir la herida en bañera, pileta o hidromasaje hasta autorización. Respecto de la ducha, seguir la indicación específica recibida al alta y secar sin frotar.</li>
+          <li>Consultar si presenta enrojecimiento progresivo, aumento de temperatura local, secreción, apertura de la herida, sangrado persistente, fiebre o dolor claramente creciente.</li>
+          <li>Ante aparición de déficit neurológico nuevo, alteración esfinteriana, deterioro del sensorio u otro síntoma de alarma, realizar evaluación médica urgente.</li>
+        </ul>
+      `)+
+      sec("Control",`<p>Control postoperatorio en aproximadamente <b>${days} días</b>, o antes si la evolución clínica o la herida lo requieren.</p>`);
+  }
+
   return base+sec("Honorarios",`<p>Módulo: ${E(c.module||"—")} · Unidades: ${E(c.units||"—")} · Valor unidad: ${M(c.uv)} · Honorarios: ${M(c.fees)} · Estado: ${E(c.fin)}</p>`);
 }
 function showdoc(k){
@@ -372,6 +594,26 @@ function bind(){
   if(V==="case"){
     const a=S(),c=a.find(x=>x.id===CID);
     document.getElementById("savest").onclick=()=>{c.status=document.getElementById("st").value;W(a);render()};
+    document.getElementById("saveortho").onclick=()=>{c.ortho=document.getElementById("orthoEdit").value;W(a);render()};
+    document.getElementById("loadPostop").onclick=()=>{
+      const type=document.getElementById("postopProtocol").value;
+      document.getElementById("postopMedsCase").value=postopTemplate(type);
+    };
+    document.getElementById("savePostop").onclick=()=>{
+      c.postopProtocol=document.getElementById("postopProtocol").value;
+      c.postopMeds=document.getElementById("postopMedsCase").value;
+      W(a);render()
+    };
+    document.getElementById("savealta").onclick=()=>{
+      c.dischargeDate=document.getElementById("dischargeDate").value;
+      c.stayDetails=document.getElementById("stayDetails").value;
+      c.dischargeStatus=document.getElementById("dischargeStatus").value;
+      c.postopMeds=document.getElementById("postopMeds").value;
+      if(!c.postopProtocol) c.postopProtocol=postopProtocolFor(c);
+      c.dischargeInstructions=document.getElementById("dischargeInstructions").value;
+      c.controlDays=document.getElementById("controlDays").value||15;
+      W(a);render()
+    };
     document.getElementById("savefin").onclick=()=>{c.fin=document.getElementById("fin").value;c.fees=document.getElementById("fee").value;W(a);render()};
     document.getElementById("notesCase").onclick=()=>shareText(`NeuroCore_${c.name}`,caseText(c));
   }
