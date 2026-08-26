@@ -75,7 +75,7 @@ h3{margin:0;font-size:17px}
 <body>
 <div id="app" class="app">
   <div class="top">
-    <div><div class="brand">NEUROCORE+</div><div class="sub">Circuito quirúrgico · v2.6</div></div>
+    <div><div class="brand">NEUROCORE+</div><div class="sub">Circuito quirúrgico · v2.7.1</div></div>
     <button id="plus" class="pri">+ Indicar</button>
   </div>
   <main id="view"></main>
@@ -141,11 +141,13 @@ function postopTemplate(type){
     "Diclofenac: 1 ampolla cada 8 horas.",
     "Solución fisiológica: 1500 cc a pasar en 24 horas.",
     "Ranitidina: 1 ampolla cada 12 horas.",
-    "Cefa: 1 cada 12 horas.",
+    "Cefazolina: 1000 mg cada 12 horas.",
     "Tramadol: 1 ampolla SOS, a criterio si dolor mayor de 7/10.",
+    "Pregabalina: 75 mg cada 12 hs (posible).",
     "Dieta según corresponda.",
     "Curación de herida estéril si mancha.",
-    "Registrar débito de drenaje. Solo vaciar si se llena y avisar al servicio."
+    "Registrar débito de drenaje.",
+    "Solo vaciar si se llena y avisar al servicio."
   ];
   if(type==="Cerebral"){
     base.push(
@@ -154,7 +156,7 @@ function postopTemplate(type){
       "Cabecera a 40 grados."
     );
   }
-  return type==="Manual" ? "" : base.join("\\n");
+  return type==="Manual" ? "" : base.join("\n");
 }
 function postopText(c){
   if((c.postopMeds||"").trim()) return c.postopMeds.trim();
@@ -274,7 +276,7 @@ function casedetail(){
   </div>
   <h2>Documentos</h2>
   <div class="docs">
-    ${[["hc","Resumen de historia clínica"],["ind","Indicación quirúrgica"],["auth","Solicitud de autorización"],["ortho","Pedido de insumos quirúrgicos"],["pre","Checklist prequirúrgico"],["foja","Foja quirúrgica"],["d0","Evolución D0"],["d1","Evolución D1"],["postop","Medicación / indicaciones postquirúrgicas"],["alta","Epicrisis / alta"],["hon","Honorarios"]].map(d=>`<button data-doc="${d[0]}">${d[1]}</button>`).join("")}
+    ${[["hc","Resumen de historia clínica"],["ind","Indicación quirúrgica"],["auth","Solicitud de autorización"],["ortho","Pedido de insumos quirúrgicos"],["pre","Checklist prequirúrgico"],["foja","Foja quirúrgica"],["pasa","Pase de Sala"],["postop","Medicación / indicaciones postquirúrgicas"],["alta","Epicrisis / alta"],["hon","Honorarios"]].map(d=>`<button data-doc="${d[0]}">${d[1]}</button>`).join("")}
     <button id="notesCase">Compartir resumen del caso a Notas</button>
   </div>
   <h2>Checklist</h2>
@@ -425,22 +427,29 @@ function doc(c,k){
       sec("Foja quirúrgica — borrador para validación",`<ol>${fojaSteps(c).map(x=>`<li>${E(x)}</li>`).join("")}</ol>`)+
       `<p><b>Constancia médico-legal:</b> este borrador debe revisarse y adecuarse a lo efectivamente realizado, hallazgos, implantes, drenajes, incidencias/complicaciones y destino postoperatorio antes de su firma e incorporación a la historia clínica.</p>`;
 
-  if(k==="d0"||k==="d1")
-    return base+sec(`Evolución ${k.toUpperCase()}`,`
-      <p>Estado clínico: _______________________________________</p>
-      <p>Neurológico: __________________________________________</p>
-      <p>Dolor: ________________________________________________</p>
-      <p>Herida: _______________________________________________</p>
-      <p><b>Drenaje:</b> tipo/ubicación ____________________ · débito __________ · características ____________________</p>
-      <ul>${(P[c.proc]?.po||[]).map(x=>`<li>☐ ${E(x)}</li>`).join("")}</ul>
-      <p>Conducta: _____________________________________________</p>`);
+  if(k==="pasa"){
+    const checklist=[
+      "Drenaje",
+      "Fuerza",
+      "Sensibilidad",
+      "Dolor",
+      "Curación / herida",
+      "Movilidad",
+      "Esfínteres",
+      "Débitos",
+      "Revisar medicación administrada"
+    ];
+    return base+sec("Pase de Sala",`
+      <ul>${checklist.map(x=>`<li>☐ ${E(x)}</li>`).join("")}</ul>
+    `);
+  }
 
   if(k==="postop"){
     const txt=postopText(c);
     const lines=txt?txt.split(/\n+/).map(x=>x.trim()).filter(Boolean):[];
     return base+
       sec("Medicación e indicaciones postquirúrgicas",`
-        <ol>${lines.map(x=>`<li>${E(x)}</li>`).join("")}</ol>
+        <ul>${lines.map(x=>`<li>${E(x)}</li>`).join("")}</ul>
         <p><b>Diagnóstico:</b> ${E(c.dx||"—")}</p>
         <p><small>Esquema sujeto a validación médica individual según alergias, contraindicaciones, función renal/hepática, interacciones, riesgo hemorrágico y condición clínica.</small></p>
       `);
