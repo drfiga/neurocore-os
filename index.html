@@ -75,7 +75,7 @@ h3{margin:0;font-size:17px}
 <body>
 <div id="app" class="app">
   <div class="top">
-    <div><div class="brand">NEUROCORE+</div><div class="sub">Circuito quirúrgico</div></div>
+    <div><div class="brand">NEUROCORE+</div><div class="sub">Circuito quirúrgico · v2.2</div></div>
     <button id="plus" class="pri">+ Indicar</button>
   </div>
   <main id="view"></main>
@@ -123,6 +123,7 @@ const M=x=>new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS",maximu
 
 function markDirty(){localStorage.setItem("nc_dirty","1");localStorage.setItem("nc_last_change",new Date().toISOString())}
 function dirty(){return localStorage.getItem("nc_dirty")==="1"}
+function hasBackup(){return !!localStorage.getItem("nc_last_backup")}
 function lastBackup(){return localStorage.getItem("nc_last_backup")||""}
 function setBackedUp(){localStorage.setItem("nc_dirty","0");localStorage.setItem("nc_last_backup",new Date().toISOString())}
 function fmtDateTime(x){return x?new Date(x).toLocaleString("es-AR"):"Nunca"}
@@ -145,9 +146,10 @@ function tasks(c){
   return a
 }
 function home(){
-  const a=S(),today=new Date().toISOString().slice(0,10),needs=dirty();
+  const a=S(),today=new Date().toISOString().slice(0,10),needs=dirty(),hb=hasBackup();
+  const backupText=!hb?"Todavía no hiciste el primer backup en iCloud.":(needs?"Hay cambios sin respaldar en iCloud.":"Backup de iCloud al día.");
   return `
-  <div class="notice ${needs?"":"ok"}">${needs?"Hay cambios sin respaldar en iCloud.":"Backup de iCloud al día."}</div>
+  <div class="notice ${hb&&!needs?"ok":""}">${backupText}</div>
   <div class="actions">
     <button class="pri" data-go="new">+ Indicación</button>
     <button data-go="backup">${needs?"Guardar en iCloud":"iCloud"}</button>
@@ -195,17 +197,20 @@ function finance(){
   return `<h2>Finanzas</h2><div class="grid metrics">${metric("Registrado",M(tot))}${metric("Cobrado",M(cob))}${metric("Pendiente",M(tot-cob))}</div>${list(a)}`;
 }
 function backupView(){
-  const a=S(),needs=dirty(),lb=lastBackup();
+  const a=S(),needs=dirty(),lb=lastBackup(),hb=hasBackup();
+  const statusTitle=!hb?"Primer backup pendiente":(needs?"Backup pendiente":"Backup al día");
+  const statusBadge=!hb?"SIN BACKUP":(needs?"PENDIENTE":"OK");
+  const statusClass=hb&&!needs?"ok":"warn";
   return `<h2>iCloud Backup</h2>
   <div class="card backup-status">
-    <div><strong>${needs?"Backup pendiente":"Backup al día"}</strong><div class="muted">Último respaldo: ${E(fmtDateTime(lb))}<br>${a.length} caso(s) guardados en este iPhone.</div></div>
-    <span class="badge ${needs?"warn":"ok"}">${needs?"PENDIENTE":"OK"}</span>
+    <div><strong>${statusTitle}</strong><div class="muted">Último respaldo: ${E(fmtDateTime(lb))}<br>${a.length} caso(s) guardados en este iPhone.</div></div>
+    <span class="badge ${statusClass}">${statusBadge}</span>
   </div>
 
-  <div class="notice" style="margin-top:10px">El backup cifrado se comparte mediante iOS. Elegí <b>Guardar en Archivos</b> y seleccioná <b>iCloud Drive → NeuroCore</b>. La app no puede escribir silenciosamente en iCloud por restricciones de iOS.</div>
+  <div class="notice" style="margin-top:10px">NeuroCore genera un archivo de backup <b>cifrado</b> y lo descarga al iPhone. Después, desde <b>Archivos → Descargas</b>, movelo a <b>iCloud Drive → NeuroCore</b>. iOS no permite que una web escriba directamente y en silencio dentro de iCloud.</div>
 
   <div class="grid" style="margin-top:12px">
-    <button id="icloudSave" class="pri bigbtn">Guardar backup cifrado en iCloud</button>
+    <button id="icloudSave" class="pri bigbtn">Generar backup cifrado</button>
     <button id="restoreBtn" class="bigbtn">Restaurar desde iCloud</button>
     <button id="notesBtn" class="bigbtn">Compartir resumen a Notas</button>
     <button id="plainExport" class="bigbtn">Exportar JSON de emergencia</button>
@@ -303,19 +308,19 @@ async function encryptedBackupFile(pass){
 }
 async function saveICloud(){
   if(!window.crypto?.subtle){alert("Este navegador no permite cifrado seguro. Abrí NeuroCore desde Safari/HTTPS.");return}
-  const pass=prompt("Contraseña para cifrar este backup de iCloud:");
+  const pass=prompt("Contraseña para cifrar este backup:");
   if(!pass||pass.length<6){if(pass!==null)alert("Usá una contraseña de al menos 6 caracteres.");return}
-  const btn=document.getElementById("icloudSave");if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Preparando…'}
+  const btn=document.getElementById("icloudSave");
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Cifrando…'}
   try{
     const file=await encryptedBackupFile(pass);
-    if(navigator.share && navigator.canShare?.({files:[file]})){
-      await navigator.share({title:"NeuroCore Backup",text:"Guardar en Archivos → iCloud Drive → NeuroCore",files:[file]});
-      setBackedUp();alert("Backup preparado. Si elegiste Guardar en Archivos, quedó respaldado en la ubicación seleccionada.");
-    }else{
-      downloadBlob(file,file.name);setBackedUp();alert("Backup descargado. Movelo a iCloud Drive desde Archivos.");
-    }
+    // Descarga directa: evita la restricción de iOS que bloquea navigator.share
+    // cuando el cifrado asíncrono consume la activación del usuario.
+    downloadBlob(file,file.name);
+    setBackedUp();
+    alert("Backup cifrado generado correctamente. Quedó en Descargas. Desde la app Archivos podés moverlo a iCloud Drive → NeuroCore.");
   }catch(e){
-    if(e.name!=="AbortError")alert("No se pudo generar el backup: "+e.message);
+    alert("No se pudo generar el backup: "+e.message);
   }finally{render()}
 }
 function emergencyExport(){
